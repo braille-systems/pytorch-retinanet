@@ -91,8 +91,8 @@ def meshgrid(x, y, row_major=True):
     '''
     a = torch.arange(0,x)
     b = torch.arange(0,y)
-    xx = a.repeat(y).view(-1,1)
-    yy = b.view(-1,1).repeat(1,x).view(-1,1)
+    xx = a.repeat(y).view(-1,1).float()
+    yy = b.view(-1,1).repeat(1,x).view(-1,1).float()
     return torch.cat([xx,yy],1) if row_major else torch.cat([yy,xx],1)
 
 def change_box_order(boxes, order):
@@ -161,6 +161,10 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
     Reference:
       https://github.com/rbgirshick/py-faster-rcnn/blob/master/lib/nms/py_cpu_nms.py
     '''
+
+    if len(scores.shape) == 0:
+        return torch.LongTensor([])
+
     x1 = bboxes[:,0]
     y1 = bboxes[:,1]
     x2 = bboxes[:,2]
@@ -171,6 +175,9 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
 
     keep = []
     while order.numel() > 0:
+        if len(order.shape) == 0:
+            break
+
         i = order[0]
         keep.append(i)
 
@@ -223,7 +230,7 @@ def one_hot_embedding(labels, num_classes):
     Returns:
       (tensor) encoded labels, sized [N,#classes].
     '''
-    y = torch.eye(num_classes)  # [D,D]
+    y = torch.eye(num_classes, device = labels.device)  # [D,D]
     return y[labels]            # [N,D]
 
 def msr_init(net):
@@ -239,8 +246,8 @@ def msr_init(net):
         elif type(layer) == nn.Linear:
             layer.bias.data.zero_()
 
-_, term_width = os.popen('stty size', 'r').read().split()
-term_width = int(term_width)
+#_, term_width = os.popen('stty size', 'r').read().split()
+term_width = 120 #int(term_width)
 TOTAL_BAR_LENGTH = 86.
 last_time = time.time()
 begin_time = last_time

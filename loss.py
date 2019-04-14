@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils import one_hot_embedding
+from .utils import one_hot_embedding
 from torch.autograd import Variable
 
 
@@ -12,6 +12,7 @@ class FocalLoss(nn.Module):
     def __init__(self, num_classes=20):
         super(FocalLoss, self).__init__()
         self.num_classes = num_classes
+        self.loss_dict = {'loc':0, 'cls':0}
 
     def focal_loss(self, x, y):
         '''Focal loss.
@@ -26,15 +27,15 @@ class FocalLoss(nn.Module):
         alpha = 0.25
         gamma = 2
 
-        t = one_hot_embedding(y.data.cpu(), 1+self.num_classes)  # [N,21]
+        t = one_hot_embedding(y.data, 1+self.num_classes)  # [N,21]
         t = t[:,1:]  # exclude background
-        t = Variable(t).cuda()  # [N,20]
+        t = Variable(t)  # [N,20]
 
         p = x.sigmoid()
         pt = p*t + (1-p)*(1-t)         # pt = p if t > 0 else 1-p
         w = alpha*t + (1-alpha)*(1-t)  # w = alpha if t > 0 else 1-alpha
         w = w * (1-pt).pow(gamma)
-        return F.binary_cross_entropy_with_logits(x, t, w, size_average=False)
+        return F.binary_cross_entropy_with_logits(x, t, w.data, size_average=False)
 
     def focal_loss_alt(self, x, y):
         '''Focal loss alternative.
@@ -48,9 +49,9 @@ class FocalLoss(nn.Module):
         '''
         alpha = 0.25
 
-        t = one_hot_embedding(y.data.cpu(), 1+self.num_classes)
+        t = one_hot_embedding(y.data, 1+self.num_classes)
         t = t[:,1:]
-        t = Variable(t).cuda()
+        t = Variable(t)
 
         xt = x*(2*t-1)  # xt = x if t > 0 else -x
         pt = (2*xt+1).sigmoid()
@@ -58,6 +59,24 @@ class FocalLoss(nn.Module):
         w = alpha*t + (1-alpha)*(1-t)
         loss = -w*pt.log() / 2
         return loss.sum()
+
+    def focal_loss_3(self, inputs, targets):
+        '''Focal loss alternative 3
+
+        Args:
+          x: (tensor) sized [N,D].
+          y: (tensor) sized [N,].
+
+        Return:
+          (tensor) focal loss.
+        '''
+        gamma = 2
+        targets = targets.unsqueeze(1).float()
+        #GVNC 1) only for 1 class 2) alpha is missed
+        bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduce=False)
+        pt = torch.exp(-bce_loss)
+        f_loss = (1 - pt) ** gamma * bce_loss
+        return f_loss.sum()
 
     def forward(self, loc_preds, loc_targets, cls_preds, cls_targets):
         '''Compute loss between (loc_preds, loc_targets) and (cls_preds, cls_targets).
@@ -87,10 +106,14 @@ class FocalLoss(nn.Module):
         # cls_loss = FocalLoss(loc_preds, loc_targets)
         ################################################################
         pos_neg = cls_targets > -1  # exclude ignored anchors
+        num_peg = pos_neg.data.long().sum()
         mask = pos_neg.unsqueeze(2).expand_as(cls_preds)
         masked_cls_preds = cls_preds[mask].view(-1,self.num_classes)
-        cls_loss = self.focal_loss_alt(masked_cls_preds, cls_targets[pos_neg])
+        cls_loss = self.focal_loss(masked_cls_preds, cls_targets[pos_neg])
 
-        print('loc_loss: %.3f | cls_loss: %.3f' % (loc_loss.data[0]/num_pos, cls_loss.data[0]/num_pos), end=' | ')
-        loss = (loc_loss+cls_loss)/num_pos
+        num_pos = max(1, num_pos)
+        num_peg = max(1, num_peg)
+        #print('loc_loss: %.3f | cls_loss: %.3f' % (loc_loss/num_pos, cls_loss/num_peg), end=' | ')
+        loss = loc_loss/num_pos+cls_loss/num_peg
+        self.loss_dict = {'loss':loss, 'loc':loc_loss/num_pos, 'cls':cls_loss/num_peg}
         return loss
