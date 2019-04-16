@@ -98,9 +98,13 @@ class FocalLoss(nn.Module):
         # loc_loss = SmoothL1Loss(pos_loc_preds, pos_loc_targets)
         ################################################################
         mask = pos.unsqueeze(2).expand_as(loc_preds)       # [N,#anchors,4]
+        del pos
         masked_loc_preds = loc_preds[mask].view(-1,4)      # [#pos,4]
         masked_loc_targets = loc_targets[mask].view(-1,4)  # [#pos,4]
+        del mask
         loc_loss = F.smooth_l1_loss(masked_loc_preds, masked_loc_targets, size_average=False)
+        del masked_loc_preds
+        del masked_loc_targets
 
         ################################################################
         # cls_loss = FocalLoss(loc_preds, loc_targets)
@@ -109,7 +113,12 @@ class FocalLoss(nn.Module):
         num_peg = pos_neg.data.long().sum()
         mask = pos_neg.unsqueeze(2).expand_as(cls_preds)
         masked_cls_preds = cls_preds[mask].view(-1,self.num_classes)
-        cls_loss = self.focal_loss(masked_cls_preds, cls_targets[pos_neg])
+        del mask
+        masked_cls_targets = cls_targets[pos_neg]
+        del pos_neg
+        cls_loss = self.focal_loss(masked_cls_preds, masked_cls_targets)
+        del masked_cls_preds
+        del masked_cls_targets
 
         num_pos = max(1, num_pos)
         num_peg = max(1, num_peg)
