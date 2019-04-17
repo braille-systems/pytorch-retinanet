@@ -110,8 +110,8 @@ class FocalLoss(nn.Module):
         # cls_loss = FocalLoss(loc_preds, loc_targets)
         ################################################################
         pos_neg = cls_targets > -1  # exclude ignored anchors
-        num_peg = pos_neg.data.long().sum()
         mask = pos_neg.unsqueeze(2).expand_as(cls_preds)
+        num_neg = pos_neg.data.long().sum() * cls_preds.shape[-1]
         masked_cls_preds = cls_preds[mask].view(-1,self.num_classes)
         del mask
         masked_cls_targets = cls_targets[pos_neg]
@@ -121,8 +121,8 @@ class FocalLoss(nn.Module):
         del masked_cls_targets
 
         num_pos = max(1, num_pos)
-        num_peg = max(1, num_peg)
-        #print('loc_loss: %.3f | cls_loss: %.3f' % (loc_loss/num_pos, cls_loss/num_peg), end=' | ')
-        loss = loc_loss/num_pos+cls_loss/num_peg
-        self.loss_dict = {'loss':loss, 'loc':loc_loss/num_pos, 'cls':cls_loss/num_peg}
+        num_neg = max(1, num_neg)
+        #print('loc_loss: %.3f | cls_loss: %.3f' % (loc_loss/num_pos, cls_loss/num_neg), end=' | ')
+        loss = loc_loss/num_pos+cls_loss/num_neg
+        self.loss_dict = {'loss':loss, 'loc':loc_loss/num_pos, 'cls':cls_loss/num_neg}
         return loss
