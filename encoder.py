@@ -109,9 +109,10 @@ class DataEncoder:
             loc_targets = torch.cat([loc_xy,loc_wh], 1)
             cls_targets = 1 + labels[max_ids]
 
-            cls_targets[max_ious<self.iuo_fit_thr] = 0
-            ignore = (max_ious>self.iuo_nofit_thr) & (max_ious<self.iuo_fit_thr)  # ignore ious between [0.4,0.5]
-            cls_targets[ignore] = -1  # for now just mark ignored to -1
+            cls_targets[max_ious<=self.iuo_fit_thr] = 0
+            if self.iuo_nofit_thr < self.iuo_fit_thr:
+                ignore = (max_ious>self.iuo_nofit_thr) & (max_ious<=self.iuo_fit_thr)  # ignore ious between [0.4,0.5]
+                cls_targets[ignore] = -1  # for now just mark ignored to -1
         else:
             loc_targets = torch.zeros(anchor_boxes.shape[0], 4, dtype = torch.float32)
             cls_targets = torch.zeros(anchor_boxes.shape[0],    dtype = torch.long)
