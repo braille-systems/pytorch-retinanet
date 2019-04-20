@@ -146,4 +146,4 @@ class DataEncoder:
         ids = score > cls_thresh
         ids = ids.nonzero().squeeze()             # [#obj,]
         keep = box_nms(boxes[ids], score[ids], threshold=nms_thresh)
-        return boxes[ids][keep], labels[ids][keep]
+        return boxes[ids][keep], labels[ids][keep], score[ids][keep]
