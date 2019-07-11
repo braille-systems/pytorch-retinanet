@@ -9,9 +9,10 @@ from torch.autograd import Variable
 
 
 class FocalLoss(nn.Module):
-    def __init__(self, num_classes=20):
+    def __init__(self, num_classes=20, class_loss_scale = 1.0):
         super(FocalLoss, self).__init__()
         self.num_classes = num_classes
+        self.class_loss_scale = class_loss_scale
         self.loss_dict = {'loc':0, 'cls':0}
 
     def focal_loss(self, x, y):
@@ -92,7 +93,7 @@ class FocalLoss(nn.Module):
         '''
         batch_size, num_boxes = cls_targets.size()
         pos = cls_targets > 0  # [N,#anchors]
-        num_pos = pos.data.long().sum()
+        num_pos = max(1, pos.data.long().sum())
 
         ################################################################
         # loc_loss = SmoothL1Loss(pos_loc_preds, pos_loc_targets)
@@ -102,7 +103,7 @@ class FocalLoss(nn.Module):
         masked_loc_preds = loc_preds[mask].view(-1,4)      # [#pos,4]
         masked_loc_targets = loc_targets[mask].view(-1,4)  # [#pos,4]
         del mask
-        loc_loss = F.smooth_l1_loss(masked_loc_preds, masked_loc_targets, size_average=False)
+        loc_loss = F.smooth_l1_loss(masked_loc_preds, masked_loc_targets, size_average=False)/num_pos
         del masked_loc_preds
         del masked_loc_targets
 
@@ -111,18 +112,16 @@ class FocalLoss(nn.Module):
         ################################################################
         pos_neg = cls_targets > -1  # exclude ignored anchors
         mask = pos_neg.unsqueeze(2).expand_as(cls_preds)
-        num_neg = pos_neg.data.long().sum() * cls_preds.shape[-1]
+        num_neg = max(1, pos_neg.data.long().sum() * cls_preds.shape[-1])
         masked_cls_preds = cls_preds[mask].view(-1,self.num_classes)
         del mask
         masked_cls_targets = cls_targets[pos_neg]
         del pos_neg
-        cls_loss = self.focal_loss(masked_cls_preds, masked_cls_targets)
+        cls_loss = self.focal_loss(masked_cls_preds, masked_cls_targets)/num_neg*self.class_loss_scale
         del masked_cls_preds
         del masked_cls_targets
 
-        num_pos = max(1, num_pos)
-        num_neg = max(1, num_neg)
-        #print('loc_loss: %.3f | cls_loss: %.3f' % (loc_loss/num_pos, cls_loss/num_neg), end=' | ')
-        loss = loc_loss/num_pos+cls_loss/num_neg
-        self.loss_dict = {'loss':loss, 'loc':loc_loss/num_pos, 'cls':cls_loss/num_neg}
+        #print('loc_loss: %.3f | cls_loss: %.3f' % (loc_loss, cls_loss), end=' | ')
+        loss = loc_loss+cls_loss
+        self.loss_dict = {'loss':loss, 'loc':loc_loss, 'cls':cls_loss}
         return loss
