@@ -6,7 +6,8 @@ from torch.autograd import Variable
 
 
 class RetinaNet(nn.Module):
-    def __init__(self, num_layers=5, num_anchors=9, num_classes=20):
+    num_layers: torch.jit.Final[int]
+    def __init__(self, num_layers =5, num_anchors=9, num_classes=20):
         super(RetinaNet, self).__init__()
         self.fpn = FPN50(num_layers)
         self.num_anchors = num_anchors
@@ -17,8 +18,8 @@ class RetinaNet(nn.Module):
 
     def forward(self, x):
         fms = self.fpn(x)
-        loc_preds = []
-        cls_preds = []
+        loc_preds: List[Tensor] = []
+        cls_preds: List[Tensor] = []
         assert self.num_layers <= len(fms)
         for fm in fms[:self.num_layers]:
             loc_pred = self.loc_head(fm)

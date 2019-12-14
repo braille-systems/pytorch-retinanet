@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import math
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -60,6 +61,7 @@ def mask_select(input, mask, dim=0):
     return input.index_select(dim, index)
 
 def meshgrid(x, y, row_major=True):
+    # type: (int, int, bool)->Tensor
     '''Return meshgrid in range x & y.
 
     Args:
@@ -96,6 +98,7 @@ def meshgrid(x, y, row_major=True):
     return torch.cat([xx,yy],1) if row_major else torch.cat([yy,xx],1)
 
 def change_box_order(boxes, order):
+    # type: (Tensor, str)->Tensor
     '''Change box order between (xmin,ymin,xmax,ymax) and (xcenter,ycenter,width,height).
 
     Args:
@@ -105,14 +108,17 @@ def change_box_order(boxes, order):
     Returns:
       (tensor) converted bounding boxes, sized [N,4].
     '''
-    assert order in ['xyxy2xywh','xywh2xyxy']
+    xyxy2xywh: str = 'xyxy2xywh'
+    xywh2xyxy: str = 'xywh2xyxy'
+    assert order in [xyxy2xywh, xywh2xyxy]
     a = boxes[:,:2]
     b = boxes[:,2:]
-    if order == 'xyxy2xywh':
+    if order == xyxy2xywh:
         return torch.cat([(a+b)/2,b-a+1], 1)
     return torch.cat([a-b/2,a+b/2], 1)
 
 def box_iou(box1, box2, order='xyxy'):
+    # type: (Tensor, Tensor, str)->Tensor
     '''Compute the intersection over union of two set of boxes.
 
     The default box order is (xmin, ymin, xmax, ymax).
@@ -128,9 +134,12 @@ def box_iou(box1, box2, order='xyxy'):
     Reference:
       https://github.com/chainer/chainercv/blob/master/chainercv/utils/bbox/bbox_iou.py
     '''
-    if order == 'xywh':
-        box1 = change_box_order(box1, 'xywh2xyxy')
-        box2 = change_box_order(box2, 'xywh2xyxy')
+    xyxy2xywh: str = 'xyxy2xywh'
+    xywh2xyxy: str = 'xywh2xyxy'
+    xywh: str = 'xywh'
+    if order == xywh:
+        box1 = change_box_order(box1, xywh2xyxy)
+        box2 = change_box_order(box2, xywh2xyxy)
 
     N = box1.size(0)
     M = box2.size(0)
@@ -147,6 +156,7 @@ def box_iou(box1, box2, order='xyxy'):
     return iou
 
 def box_nms(bboxes, scores, threshold=0.5, mode='union'):
+    # type: (Tensor, Tensor, float, str)->Tensor
     '''Non maximum suppression.
 
     Args:
@@ -163,7 +173,8 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
     '''
 
     if len(scores.shape) == 0:
-        return torch.LongTensor([])
+        sz: List[int] = []
+        return torch.tensor(sz, dtype=torch.long).to(scores.device)
 
     x1 = bboxes[:,0]
     y1 = bboxes[:,1]
@@ -173,7 +184,7 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
     areas = (x2-x1+1) * (y2-y1+1)
     _, order = scores.sort(0, descending=True)
 
-    keep = []
+    keep: List[int] = []
     while order.numel() > 0:
         if len(order.shape) == 0:
             break
@@ -184,10 +195,10 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
         if order.numel() == 1:
             break
 
-        xx1 = x1[order[1:]].clamp(min=x1[i])
-        yy1 = y1[order[1:]].clamp(min=y1[i])
-        xx2 = x2[order[1:]].clamp(max=x2[i])
-        yy2 = y2[order[1:]].clamp(max=y2[i])
+        xx1 = x1[order[1:]].clamp(min=x1[i].item())
+        yy1 = y1[order[1:]].clamp(min=y1[i].item())
+        xx2 = x2[order[1:]].clamp(max=x2[i].item())
+        yy2 = y2[order[1:]].clamp(max=y2[i].item())
 
         w = (xx2-xx1+1).clamp(min=0)
         h = (yy2-yy1+1).clamp(min=0)
@@ -196,7 +207,7 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
         if mode == 'union':
             ovr = inter / (areas[i] + areas[order[1:]] - inter)
         elif mode == 'min':
-            ovr = inter / areas[order[1:]].clamp(max=areas[i])
+            ovr = inter / areas[order[1:]].clamp(max=areas[i].item())
         else:
             raise TypeError('Unknown nms mode: %s.' % mode)
 
@@ -204,7 +215,7 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
         if ids.numel() == 0:
             break
         order = order[ids+1]
-    return torch.LongTensor(keep)
+    return torch.tensor(keep, dtype=torch.long).to(scores.device)
 
 def softmax(x):
     '''Softmax along a specific dimension.

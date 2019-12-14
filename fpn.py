@@ -35,7 +35,8 @@ class Bottleneck(nn.Module):
 
 
 class FPN(nn.Module):
-    def __init__(self, block, num_blocks, num_layers=5):
+    num_layers: torch.jit.Final[int]
+    def __init__(self, block, num_blocks, num_layers =5):
         super(FPN, self).__init__()
         self.in_planes = 64
 
@@ -92,7 +93,7 @@ class FPN(nn.Module):
         '''
         _,_,H,W = y.size()
         if x is not None:
-            return F.upsample(x, size=(H,W), mode='bilinear') + y
+            return F.upsample(x, size=(H,W), mode='bilinear', align_corners=False) + y
         else:
             return y
 
@@ -102,7 +103,10 @@ class FPN(nn.Module):
         c1 = F.max_pool2d(c1, kernel_size=3, stride=2, padding=1)
         c2 = self.layer1(c1)
         c3 = self.layer2(c2)
-        p3=p4=p5=p6=p7=None
+        p4=torch.tensor(0)
+        p5=torch.tensor(0)
+        p6=torch.tensor(0)
+        p7=torch.tensor(0)
         if self.num_layers >= 2:
             c4 = self.layer3(c3)
             if self.num_layers >= 3:
