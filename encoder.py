@@ -158,7 +158,7 @@ class DataEncoder(torch.nn.Module):
 
         score, labels = cls_preds.sigmoid().max(1)          # [#anchors,]
         ids = score > cls_thresh
-        ids = ids.nonzero().squeeze()             # [#obj,]
+        ids = ids.nonzero(as_tuple=True)           # ([#obj,])
         keep = box_nms(boxes[ids], score[ids], threshold=nms_thresh)
         return boxes[ids][keep], labels[ids][keep], score[ids][keep]
 
