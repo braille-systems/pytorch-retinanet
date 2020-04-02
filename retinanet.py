@@ -8,12 +8,17 @@ from torch.autograd import Variable
 class RetinaNet(nn.Module):
     num_layers: torch.jit.Final[int]
     def __init__(self, num_layers =5, num_anchors=9, num_classes=20):
+        '''
+        :param num_layers:
+        :param num_anchors:
+        :param num_classes: can be int or list of ints (for several class labels
+        '''
         super(RetinaNet, self).__init__()
         self.fpn = FPN50(num_layers)
         self.num_anchors = num_anchors
-        self.num_classes = num_classes
+        self.total_num_classes = num_classes if isinstance(num_classes, int) else sum(num_classes)  # total class channels i.e. sum of all num_classes for all class groups
         self.loc_head = self._make_head(self.num_anchors*4)
-        self.cls_head = self._make_head(self.num_anchors*self.num_classes)
+        self.cls_head = self._make_head(self.num_anchors*self.total_num_classes)
         self.num_layers = num_layers
 
     def forward(self, x):
@@ -25,7 +30,7 @@ class RetinaNet(nn.Module):
             loc_pred = self.loc_head(fm)
             cls_pred = self.cls_head(fm)
             loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
-            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.num_classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
+            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.total_num_classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
             loc_preds.append(loc_pred)
             cls_preds.append(cls_pred)
         return torch.cat(loc_preds,1), torch.cat(cls_preds,1)

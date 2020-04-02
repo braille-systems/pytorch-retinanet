@@ -98,7 +98,7 @@ class DataEncoder(torch.nn.Module):
 
         Args:
           boxes: (tensor) bounding boxes of (xmin,ymin,xmax,ymax), sized [#obj, 4].
-          labels: (tensor) object class labels, sized [#obj,].
+          labels: (tensor) object class labels, sized [#obj,] or [#obj, class_groups].
           input_size: (int/tuple) model input size of (w,h).
 
         Returns:
@@ -127,7 +127,11 @@ class DataEncoder(torch.nn.Module):
                 cls_targets[ignore] = torch.tensor(-1).to(cls_targets.device)  # for now just mark ignored to -1
         else:
             loc_targets = torch.zeros(anchor_boxes.shape[0], 4, dtype = torch.float32)
-            cls_targets = torch.zeros(anchor_boxes.shape[0],    dtype = torch.long)
+            if len(labels.shape) > 1:
+                assert len(labels.shape) == 2
+                cls_targets = torch.zeros(anchor_boxes.shape[0], labels.shape[1], dtype=torch.long)
+            else:
+                cls_targets = torch.zeros(anchor_boxes.shape[0], dtype=torch.long)
             max_ious = torch.zeros(anchor_boxes.shape[0], dtype=torch.float32)
         return loc_targets, cls_targets, max_ious
 
