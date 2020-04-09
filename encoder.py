@@ -135,7 +135,7 @@ class DataEncoder(torch.nn.Module):
             max_ious = torch.zeros(anchor_boxes.shape[0], dtype=torch.float32)
         return loc_targets, cls_targets, max_ious
 
-    def decode(self, loc_preds, cls_preds, input_size, cls_thresh = 0.5, nms_thresh = 0.5):
+    def decode(self, loc_preds, cls_preds, input_size, cls_thresh = 0.5, nms_thresh = 0.5, num_classes: List[int] = []):
         # type: (Tensor, Tensor, Tuple[int, int], float, float)->Tuple[Tensor, Tensor, Tensor]
         '''Decode outputs back to bouding box locations and class labels.
 
@@ -160,7 +160,17 @@ class DataEncoder(torch.nn.Module):
         wh = loc_wh.exp() * anchor_boxes[:,2:]
         boxes = torch.cat([xy-wh/2, xy+wh/2], 1)  # [#anchors,4]
 
-        score, labels = cls_preds.sigmoid().max(1)          # [#anchors,]
+        if len(num_classes) <= 1:
+            score, labels = cls_preds.sigmoid().max(1)          # [#anchors,]
+        else:
+            score, _ = cls_preds.sigmoid().max(1)  # [#anchors,]
+            labels = torch.zeros((len(cls_preds), len(num_classes)), dtype=torch.int, device=cls_preds.device)
+            pos = 0
+            for i, n in enumerate(num_classes):
+                score_i, labels[:, i] = cls_preds[:, pos:pos+n].sigmoid().max(1)
+                labels[:, i][score_i <= cls_thresh] = -1
+                pos += n
+
         ids = score > cls_thresh
         ids = ids.nonzero().squeeze()             # [#obj,]
         keep = box_nms(boxes[ids], score[ids], threshold=nms_thresh)
