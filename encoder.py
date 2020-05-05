@@ -173,8 +173,11 @@ class DataEncoder(torch.nn.Module):
 
         ids = score > cls_thresh
         ids = ids.nonzero().squeeze()             # [#obj,]
-        keep = box_nms(boxes[ids], score[ids], threshold=nms_thresh)
-        return boxes[ids][keep], labels[ids][keep], score[ids][keep]
+        if len(ids.shape):
+            keep = box_nms(boxes[ids], score[ids], threshold=nms_thresh)
+            return boxes[ids][keep], labels[ids][keep], score[ids][keep]
+        else:
+            return boxes[ids].unsqueeze(0), labels[ids].unsqueeze(0), score[ids].unsqueeze(0)
 
 def DataEncoderScripted():
     return torch.jit.script(DataEncoder)
