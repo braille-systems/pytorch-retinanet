@@ -93,7 +93,8 @@ class FocalLoss(nn.Module):
           loc_targets: (tensor) encoded target locations, sized [batch_size, #anchors, 4].
           cls_preds: (tensor) predicted class confidences, sized [batch_size, #anchors, #classes].
           cls_targets: (tensor) encoded target labels, sized [batch_size, #anchors] or [batch_size, #anchors, #class_groups] for several class groups.
-
+                cls_targets == 0 for empty class, 1..N for real object class  (iou > iuo_fit_thr),
+                -1 for objects to be excluded from loss, i.e. iuo_nofit_thr < iou < iuo_fit_thr
         loss:
           (tensor) loss = SmoothL1Loss(loc_preds, loc_targets) + FocalLoss(cls_preds, cls_targets).
         '''
