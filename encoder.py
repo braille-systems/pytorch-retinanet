@@ -107,7 +107,7 @@ class DataEncoder(torch.nn.Module):
         '''
         assert not isinstance(input_size, int)
         input_size = torch.tensor(input_size)
-        anchor_boxes = self._get_anchor_boxes(input_size)
+        anchor_boxes = self._get_anchor_boxes(input_size).to(boxes)
         if boxes.shape[0] != 0:
             boxes = change_box_order(boxes, 'xyxy2xywh')
 
@@ -126,12 +126,12 @@ class DataEncoder(torch.nn.Module):
                 ignore = (max_ious>self.iuo_nofit_thr) & (idxs)  # ignore ious between [0.4,0.5]
                 cls_targets[ignore] = torch.tensor(-1).to(cls_targets.device)  # for now just mark ignored to -1
         else:
-            loc_targets = torch.zeros(anchor_boxes.shape[0], 4, dtype = torch.float32)
+            loc_targets = torch.zeros(anchor_boxes.shape[0], 4, dtype = torch.float32, device=anchor_boxes.device)
             if len(labels.shape) > 1:
                 assert len(labels.shape) == 2
-                cls_targets = torch.zeros(anchor_boxes.shape[0], labels.shape[1], dtype=torch.long)
+                cls_targets = torch.zeros(anchor_boxes.shape[0], labels.shape[1], dtype=torch.long, device=anchor_boxes.device)
             else:
-                cls_targets = torch.zeros(anchor_boxes.shape[0], dtype=torch.long)
+                cls_targets = torch.zeros(anchor_boxes.shape[0], dtype=torch.long, device=anchor_boxes.device)
             max_ious = torch.zeros(anchor_boxes.shape[0], dtype=torch.float32)
         return loc_targets, cls_targets, max_ious
 
