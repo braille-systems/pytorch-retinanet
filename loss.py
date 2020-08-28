@@ -85,7 +85,7 @@ class FocalLoss(nn.Module):
         f_loss = (1 - pt) ** gamma * bce_loss
         return f_loss.sum()
 
-    def forward(self, loc_preds, loc_targets, cls_preds, cls_targets):
+    def forward(self, loc_preds, loc_targets, cls_preds, cls_targets, loc_calc_mask=None, cls_calc_mask=None):
         '''Compute loss between (loc_preds, loc_targets) and (cls_preds, cls_targets).
 
         Args:
@@ -95,14 +95,17 @@ class FocalLoss(nn.Module):
           cls_targets: (tensor) encoded target labels, sized [batch_size, #anchors] or [batch_size, #anchors, #class_groups] for several class groups.
                 cls_targets == 0 for empty class, 1..N for real object class  (iou > iuo_fit_thr),
                 -1 for objects to be excluded from loss, i.e. iuo_nofit_thr < iou < iuo_fit_thr
+          loc_calc_mask: (tensor) if defined, mask[batch_size] defining what samples use in loc_loss
+          cls_calc_mask: (tensor) if defined, mask[batch_size] defining what samples use in cls_loss
         loss:
           (tensor) loss = SmoothL1Loss(loc_preds, loc_targets) + FocalLoss(cls_preds, cls_targets).
         '''
-        batch_size, num_boxes = cls_targets.size()[:2]
         if len(self.num_classes) == 1:
             pos = cls_targets > 0  # [N,#anchors]
         else:
             pos = cls_targets.max(2)[0] > 0  # [N,#anchors]
+        if loc_calc_mask is not None:
+            pos = pos & loc_calc_mask.unsqueeze(1)
         num_pos = max(1, pos.data.long().sum())
 
         ################################################################
@@ -117,8 +120,8 @@ class FocalLoss(nn.Module):
         del masked_loc_preds
         del masked_loc_targets
 
-        ################################################################
-        # cls_loss = FocalLoss(loc_preds, loc_targets)
+            ################################################################
+        # cls_loss = FocalLoss(cls_preds, cls_targets)
         ################################################################
         if len(self.num_classes) == 1:
             cls_targets.unsqueeze(2)
@@ -129,6 +132,8 @@ class FocalLoss(nn.Module):
             cls_preds_i = cls_preds if len(self.num_classes) == 1 else cls_preds[:, :, class_pred_idx:class_pred_idx + num_classes_i]
             class_pred_idx += num_classes_i
             pos_neg = cls_targets_i > -1  # exclude ignored anchors
+            if cls_calc_mask is not None:
+                pos_neg = pos_neg & cls_calc_mask.unsqueeze(1)
             mask = pos_neg.unsqueeze(2).expand_as(cls_preds_i)
             num_neg = max(1, pos_neg.data.long().sum() * cls_preds_i.shape[-1])
             masked_cls_preds = cls_preds_i[mask].view(-1, num_classes_i)
