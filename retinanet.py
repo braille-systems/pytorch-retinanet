@@ -7,14 +7,15 @@ from torch.autograd import Variable
 
 class RetinaNet(nn.Module):
     num_layers: torch.jit.Final[int]
-    def __init__(self, num_layers =5, num_anchors=9, num_classes=20):
+    def __init__(self, num_layers =5, num_anchors=9, num_classes=20, num_fpn_layers=0):
         '''
-        :param num_layers:
+        :param num_layers: num output layers
         :param num_anchors:
         :param num_classes: can be int or list of ints (for several class labels
+        :param num_fpn_layers: internal num of FPN layers = max(num_layers, num_fpn_layers)
         '''
         super(RetinaNet, self).__init__()
-        self.fpn = FPN50(num_layers)
+        self.fpn = FPN50(num_layers, num_fpn_layers)
         self.num_anchors = num_anchors
         self.total_num_classes = num_classes if isinstance(num_classes, int) else sum(num_classes)  # total class channels i.e. sum of all num_classes for all class groups
         self.loc_head = self._make_head(self.num_anchors*4)

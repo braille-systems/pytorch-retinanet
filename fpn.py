@@ -36,7 +36,8 @@ class Bottleneck(nn.Module):
 
 class FPN(nn.Module):
     num_layers: torch.jit.Final[int]
-    def __init__(self, block, num_blocks, num_layers =5):
+    num_fpn_layers: torch.jit.Final[int]
+    def __init__(self, block, num_blocks, num_layers=5, num_fpn_layers=0):
         super(FPN, self).__init__()
         self.in_planes = 64
 
@@ -61,6 +62,7 @@ class FPN(nn.Module):
         self.toplayer2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
         self.num_layers = num_layers
+        self.num_fpn_layers = max(num_fpn_layers, num_layers)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -92,7 +94,7 @@ class FPN(nn.Module):
         So we choose bilinear upsample which supports arbitrary output sizes.
         '''
         _,_,H,W = y.size()
-        if x is not None:
+        if x is not None and len(x.shape) != 0:
             return F.upsample(x, size=(H,W), mode='bilinear', align_corners=False) + y
         else:
             return y
@@ -107,13 +109,13 @@ class FPN(nn.Module):
         p5=torch.tensor(0)
         p6=torch.tensor(0)
         p7=torch.tensor(0)
-        if self.num_layers >= 2:
+        if self.num_fpn_layers >= 2:
             c4 = self.layer3(c3)
-            if self.num_layers >= 3:
+            if self.num_fpn_layers >= 3:
                 c5 = self.layer4(c4)
-                if self.num_layers >= 4:
+                if self.num_fpn_layers >= 4:
                     p6 = self.conv6(c5)
-                    if self.num_layers >= 5:
+                    if self.num_fpn_layers >= 5:
                         p7 = self.conv7(F.relu(p6))
                 # Top-down
                 p5 = self.latlayer1(c5)
@@ -124,11 +126,11 @@ class FPN(nn.Module):
         return (p3, p4, p5, p6, p7)[:self.num_layers]
 
 
-def FPN50(num_layers=5):
-    return FPN(Bottleneck, [3,4,6,3], num_layers=num_layers)
+def FPN50(num_layers=5, num_fpn_layers=0):
+    return FPN(Bottleneck, [3,4,6,3], num_layers=num_layers, num_fpn_layers=num_fpn_layers)
 
-def FPN101(num_layers=5):
-    return FPN(Bottleneck, [2,4,23,3], num_layers=num_layers)
+def FPN101(num_layers=5, num_fpn_layers=0):
+    return FPN(Bottleneck, [2,4,23,3], num_layers=num_layers, num_fpn_layers=num_fpn_layers)
 
 
 def test():
