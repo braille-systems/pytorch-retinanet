@@ -23,6 +23,7 @@ class DataEncoder(torch.nn.Module):
         self.anchor_wh = self._get_anchor_wh()
         self.iuo_fit_thr = iuo_fit_thr
         self.iuo_nofit_thr = iuo_nofit_thr
+        self.input_size = torch.tensor(0)
 
     def forward(self):
         pass
@@ -59,7 +60,7 @@ class DataEncoder(torch.nn.Module):
         r = torch.tensor(anchor_wh, dtype=torch.float32).view(num_fms, -1, 2)
         return r
 
-    def _get_anchor_boxes(self, input_size):
+    def _get_anchor_boxes(self, input_size, device):
         '''Compute anchor boxes for each feature map.
 
         Args:
@@ -69,21 +70,24 @@ class DataEncoder(torch.nn.Module):
           boxes: (list) anchor boxes for each feature map. Each of size [#anchors,4],
                         where #anchors = fmw * fmh * #anchors_per_cell
         '''
-        num_fms = len(self.anchor_areas)
-        fm_sizes = [(input_size/math.pow(2.,i+3)).ceil() for i in range(num_fms)]  # p3 -> p7 feature map sizes
-        num_anchors = self.num_anchors()
+        if not torch.equal(input_size, self.input_size):
+            self.input_size = input_size
+            num_fms = len(self.anchor_areas)
+            fm_sizes = [(input_size/math.pow(2.,i+3)).ceil() for i in range(num_fms)]  # p3 -> p7 feature map sizes
+            num_anchors = self.num_anchors()
 
-        boxes: List[Tensor] = []
-        for i in range(num_fms):
-            fm_size = fm_sizes[i]
-            grid_size = input_size / fm_size
-            fm_w, fm_h = int(fm_size[0]), int(fm_size[1])
-            xy = meshgrid(fm_w,fm_h) + 0.5  # [fm_h*fm_w, 2]
-            xy = (xy*grid_size).view(fm_h,fm_w,1,2).expand(fm_h,fm_w,num_anchors,2).to(self.anchor_wh.device)
-            wh = self.anchor_wh[i].view(1,1,num_anchors,2).expand(fm_h,fm_w,num_anchors,2)
-            box = torch.cat([xy,wh], 3)  # [x,y,w,h]
-            boxes.append(box.view(-1,4))
-        return torch.cat(boxes, 0)
+            boxes: List[Tensor] = []
+            for i in range(num_fms):
+                fm_size = fm_sizes[i]
+                grid_size = input_size / fm_size
+                fm_w, fm_h = int(fm_size[0]), int(fm_size[1])
+                xy = meshgrid(fm_w,fm_h) + 0.5  # [fm_h*fm_w, 2]
+                xy = (xy*grid_size).view(fm_h,fm_w,1,2).expand(fm_h,fm_w,num_anchors,2).to(self.anchor_wh.device)
+                wh = self.anchor_wh[i].view(1,1,num_anchors,2).expand(fm_h,fm_w,num_anchors,2)
+                box = torch.cat([xy,wh], 3)  # [x,y,w,h]
+                boxes.append(box.view(-1,4))
+            self.anchor_boxes = torch.cat(boxes, 0).to(device)
+        return self.anchor_boxes
 
     @torch.jit.unused
     def encode(self, boxes, labels, input_size):
@@ -107,7 +111,7 @@ class DataEncoder(torch.nn.Module):
         '''
         assert not isinstance(input_size, int)
         input_size = torch.tensor(input_size)
-        anchor_boxes = self._get_anchor_boxes(input_size).to(boxes)
+        anchor_boxes = self._get_anchor_boxes(input_size, boxes.device)
         if boxes.shape[0] != 0:
             boxes = change_box_order(boxes, 'xyxy2xywh')
 
@@ -151,7 +155,7 @@ class DataEncoder(torch.nn.Module):
         assert loc_preds.device == cls_preds.device
         assert not isinstance(input_size, int)
         input_size = torch.tensor(input_size)
-        anchor_boxes = self._get_anchor_boxes(input_size).to(loc_preds.device)
+        anchor_boxes = self._get_anchor_boxes(input_size, loc_preds.device)
 
         loc_xy = loc_preds[:,:2]
         loc_wh = loc_preds[:,2:]
