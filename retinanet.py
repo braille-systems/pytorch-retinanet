@@ -7,7 +7,7 @@ from torch.autograd import Variable
 
 class RetinaNet(nn.Module):
     num_layers: torch.jit.Final[int]
-    def __init__(self, num_layers =5, num_anchors=9, num_classes=20, num_fpn_layers=0):
+    def __init__(self, num_layers =5, num_anchors=9, num_classes=20, num_fpn_layers=0, num_heads=1):
         '''
         :param num_layers: num output layers
         :param num_anchors:
@@ -18,23 +18,30 @@ class RetinaNet(nn.Module):
         self.fpn = FPN50(num_layers, num_fpn_layers)
         self.num_anchors = num_anchors
         self.total_num_classes = num_classes if isinstance(num_classes, int) else sum(num_classes)  # total class channels i.e. sum of all num_classes for all class groups
-        self.loc_head = self._make_head(self.num_anchors*4)
-        self.cls_head = self._make_head(self.num_anchors*self.total_num_classes)
+        self.loc_head = nn.ModuleList([self._make_head(self.num_anchors*4) for i in range(num_heads)])
+        self.cls_head = nn.ModuleList([self._make_head(self.num_anchors*self.total_num_classes) for i in range(num_heads)])
         self.num_layers = num_layers
 
     def forward(self, x):
         fms = self.fpn(x)
-        loc_preds: List[Tensor] = []
-        cls_preds: List[Tensor] = []
         assert self.num_layers <= len(fms)
-        for fm in fms[:self.num_layers]:
-            loc_pred = self.loc_head(fm)
-            cls_pred = self.cls_head(fm)
-            loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
-            cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.total_num_classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
-            loc_preds.append(loc_pred)
-            cls_preds.append(cls_pred)
-        return torch.cat(loc_preds,1), torch.cat(cls_preds,1)
+        num_heads = len(self.loc_head)
+        results: List[Tuple(Tensor, Tensor)] = []
+        for i in range(num_heads):
+            loc_preds: List[Tensor] = []
+            cls_preds: List[Tensor] = []
+            for fm in fms[:self.num_layers]:
+                loc_pred = self.loc_head[i](fm)
+                cls_pred = self.cls_head[i](fm)
+                loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
+                cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.total_num_classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
+                loc_preds.append(loc_pred)
+                cls_preds.append(cls_pred)
+            results.append((torch.cat(loc_preds,1), torch.cat(cls_preds,1)))
+        if num_heads==1:
+            return results[0]
+        else:
+            return results
 
     def _make_head(self, out_planes):
         layers = []
