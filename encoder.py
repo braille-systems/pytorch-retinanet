@@ -9,6 +9,7 @@ from .utils import meshgrid, box_iou, box_nms, change_box_order
 
 class DataEncoder(torch.nn.Module):
     def __init__(self,
+                 fpn_skip_layers=0,
                  anchor_areas = [32*32., 64*64., 128*128., 256*256., 512*512.],
                  aspect_ratios = [1 / 2., 1 / 1., 2 / 1.], # width/height
                  scale_ratios = [1., pow(2, 1 / 3.), pow(2, 2 / 3.)],
@@ -24,6 +25,7 @@ class DataEncoder(torch.nn.Module):
         self.iuo_fit_thr = iuo_fit_thr
         self.iuo_nofit_thr = iuo_nofit_thr
         self.input_size = torch.tensor(0)
+        self.fpn_skip_layers = fpn_skip_layers
 
     def forward(self):
         pass
@@ -73,7 +75,7 @@ class DataEncoder(torch.nn.Module):
         if not torch.equal(input_size, self.input_size):
             self.input_size = input_size
             num_fms = len(self.anchor_areas)
-            fm_sizes = [(input_size/math.pow(2.,i+3)).ceil() for i in range(num_fms)]  # p3 -> p7 feature map sizes
+            fm_sizes = [(input_size/math.pow(2.,i + 3 + self.fpn_skip_layers)).ceil() for i in range(num_fms)]  # p3 -> p7 feature map sizes
             num_anchors = self.num_anchors()
 
             boxes: List[Tensor] = []

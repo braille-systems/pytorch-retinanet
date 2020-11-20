@@ -37,7 +37,8 @@ class Bottleneck(nn.Module):
 class FPN(nn.Module):
     num_layers: torch.jit.Final[int]
     num_fpn_layers: torch.jit.Final[int]
-    def __init__(self, block, num_blocks, num_layers=5, num_fpn_layers=0):
+    fpn_skip_layers: torch.jit.Final[int]
+    def __init__(self, block, num_blocks, num_layers=5, num_fpn_layers=0, fpn_skip_layers=0):
         super(FPN, self).__init__()
         self.in_planes = 64
 
@@ -63,6 +64,7 @@ class FPN(nn.Module):
 
         self.num_layers = num_layers
         self.num_fpn_layers = max(num_fpn_layers, num_layers)
+        self.fpn_skip_layers = fpn_skip_layers
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -123,14 +125,14 @@ class FPN(nn.Module):
             p4 = self.toplayer1(p4)
         p3 = self._upsample_add(p4, self.latlayer3(c3))
         p3 = self.toplayer2(p3)
-        return (p3, p4, p5, p6, p7)[:self.num_layers]
+        return (p3, p4, p5, p6, p7)[self.fpn_skip_layers:(self.fpn_skip_layers + self.num_layers)]
 
 
-def FPN50(num_layers=5, num_fpn_layers=0):
-    return FPN(Bottleneck, [3,4,6,3], num_layers=num_layers, num_fpn_layers=num_fpn_layers)
+def FPN50(num_layers=5, num_fpn_layers=0, fpn_skip_layers=0):
+    return FPN(Bottleneck, [3,4,6,3], num_layers=num_layers, num_fpn_layers=num_fpn_layers, fpn_skip_layers=fpn_skip_layers)
 
-def FPN101(num_layers=5, num_fpn_layers=0):
-    return FPN(Bottleneck, [2,4,23,3], num_layers=num_layers, num_fpn_layers=num_fpn_layers)
+def FPN101(num_layers=5, num_fpn_layers=0, fpn_skip_layers=0):
+    return FPN(Bottleneck, [2,4,23,3], num_layers=num_layers, num_fpn_layers=num_fpn_layers, fpn_skip_layers=fpn_skip_layers)
 
 
 def test():

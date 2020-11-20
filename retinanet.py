@@ -7,15 +7,16 @@ from torch.autograd import Variable
 
 class RetinaNet(nn.Module):
     num_layers: torch.jit.Final[int]
-    def __init__(self, num_layers =5, num_anchors=9, num_classes=20, num_fpn_layers=0, num_heads=1):
+    def __init__(self, num_layers =5, num_anchors=9, num_classes=20, num_fpn_layers=0, fpn_skip_layers=0, num_heads=1):
         '''
         :param num_layers: num output layers
         :param num_anchors:
         :param num_classes: can be int or list of ints (for several class labels
         :param num_fpn_layers: internal num of FPN layers = max(num_layers, num_fpn_layers)
+        :param fpn_skip_layers: if != 0, these most grained output layers will bi skipped
         '''
         super(RetinaNet, self).__init__()
-        self.fpn = FPN50(num_layers, num_fpn_layers)
+        self.fpn = FPN50(num_layers, num_fpn_layers, fpn_skip_layers)
         self.num_anchors = num_anchors
         self.total_num_classes = num_classes if isinstance(num_classes, int) else sum(num_classes)  # total class channels i.e. sum of all num_classes for all class groups
         self.loc_head = nn.ModuleList([self._make_head(self.num_anchors*4) for i in range(num_heads)])
@@ -24,13 +25,13 @@ class RetinaNet(nn.Module):
 
     def forward(self, x):
         fms = self.fpn(x)
-        assert self.num_layers <= len(fms)
+        assert self.num_layers == len(fms)
         num_heads = len(self.loc_head)
         results: List[Tuple(Tensor, Tensor)] = []
         for i in range(num_heads):
             loc_preds: List[Tensor] = []
             cls_preds: List[Tensor] = []
-            for fm in fms[:self.num_layers]:
+            for fm in fms:
                 loc_pred = self.loc_head[i](fm)
                 cls_pred = self.cls_head[i](fm)
                 loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
