@@ -19,21 +19,23 @@ class RetinaNet(nn.Module):
         self.fpn = FPN50(num_layers, num_fpn_layers, fpn_skip_layers)
         self.num_anchors = num_anchors
         self.total_num_classes = num_classes if isinstance(num_classes, int) else sum(num_classes)  # total class channels i.e. sum of all num_classes for all class groups
-        self.loc_head = nn.ModuleList([self._make_head(self.num_anchors*4) for i in range(num_heads)])
-        self.cls_head = nn.ModuleList([self._make_head(self.num_anchors*self.total_num_classes) for i in range(num_heads)])
+        #self.loc_head = nn.ModuleList([self._make_head(self.num_anchors*4) for i in range(num_heads)])
+        self.loc_head = self._make_head(self.num_anchors * 4)
+        #self.cls_head = nn.ModuleList([self._make_head(self.num_anchors*self.total_num_classes) for i in range(num_heads)])
+        self.cls_head = self._make_head(self.num_anchors * self.total_num_classes)
         self.num_layers = num_layers
 
     def forward(self, x):
         fms = self.fpn(x)
         assert self.num_layers == len(fms)
-        num_heads = len(self.loc_head)
+        num_heads = 1 #len(self.loc_head)
         results: List[Tuple(Tensor, Tensor)] = []
         for i in range(num_heads):
             loc_preds: List[Tensor] = []
             cls_preds: List[Tensor] = []
             for fm in fms:
-                loc_pred = self.loc_head[i](fm)
-                cls_pred = self.cls_head[i](fm)
+                loc_pred = self.loc_head(fm)
+                cls_pred = self.cls_head(fm)
                 loc_pred = loc_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,4)                 # [N, 9*4,H,W] -> [N,H,W, 9*4] -> [N,H*W*9, 4]
                 cls_pred = cls_pred.permute(0,2,3,1).contiguous().view(x.size(0),-1,self.total_num_classes)  # [N,9*20,H,W] -> [N,H,W,9*20] -> [N,H*W*9,20]
                 loc_preds.append(loc_pred)
