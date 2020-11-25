@@ -15,8 +15,15 @@ class DataEncoder(torch.nn.Module):
                  scale_ratios = [1., pow(2, 1 / 3.), pow(2, 2 / 3.)],
                  iuo_fit_thr = 0.5, # if iou > iuo_fit_thr => rect fits anchor
                  iuo_nofit_thr = 0.4, # if iou < iuo_nofit_thr => anchor has no fit rect
+                 ignored_scores = (0,0)
                  ):
         # type: (List[float], List[float], List[float], float, float) -> None
+        """
+        ignored_scores: Tuple(float, float).
+        if score >= ignored_scores, object is considered as truth object
+        if score in [ignored_scores[0], ignored_scores[1]) - object is ignored
+        if score < ignored_scores[0] - object is considered false (absent)
+        """
         super(DataEncoder, self).__init__()
         self.anchor_areas = anchor_areas  # p3 -> p7
         self.aspect_ratios = aspect_ratios
@@ -26,6 +33,7 @@ class DataEncoder(torch.nn.Module):
         self.iuo_nofit_thr = iuo_nofit_thr
         self.input_size = torch.tensor(0)
         self.fpn_skip_layers = fpn_skip_layers
+        self.ignored_scores = ignored_scores
 
     def forward(self):
         pass
@@ -92,8 +100,8 @@ class DataEncoder(torch.nn.Module):
         return self.anchor_boxes
 
     @torch.jit.unused
-    def encode(self, boxes, labels, input_size):
-        # type: (Tensor, Tensor, Tuple[int, int])->Tuple[Tensor, Tensor, Tensor]
+    def encode(self, boxes, labels, input_size, scores):
+        # type: (Tensor, Tensor, Tuple[int, int], Tensor, Tuple[float, float])->Tuple[Tensor, Tensor, Tensor]
         '''Encode target bounding boxes and class labels.
 
         We obey the Faster RCNN box coder:
@@ -106,7 +114,7 @@ class DataEncoder(torch.nn.Module):
           boxes: (tensor) bounding boxes of (xmin,ymin,xmax,ymax), sized [#obj, 4].
           labels: (tensor) object class labels, sized [#obj,] or [#obj, class_groups].
           input_size: (int/tuple) model input size of (w,h).
-
+          scores: scores of g.t. objects
         Returns:
           loc_targets: (tensor) encoded bounding boxes, sized [#anchors,4].
           cls_targets: (tensor) encoded class labels, sized [#anchors,].
@@ -114,12 +122,18 @@ class DataEncoder(torch.nn.Module):
         assert not isinstance(input_size, int)
         input_size = torch.tensor(input_size)
         anchor_boxes = self._get_anchor_boxes(input_size, boxes.device)
+        if self.ignored_scores[0]:
+            idxs: Tensor = scores >= self.ignored_scores[0]
+            boxes = boxes[idxs]
+            labels = labels[idxs]
+            scores = scores[idxs]
         if boxes.shape[0] != 0:
             boxes = change_box_order(boxes, 'xyxy2xywh')
 
             ious = box_iou(anchor_boxes, boxes, order='xywh')
             max_ious, max_ids = ious.max(1)
             boxes = boxes[max_ids]
+            scores = scores[max_ids]
 
             loc_xy = (boxes[:,:2]-anchor_boxes[:,:2]) / anchor_boxes[:,2:]
             loc_wh = torch.log(boxes[:,2:]/anchor_boxes[:,2:])
@@ -131,6 +145,9 @@ class DataEncoder(torch.nn.Module):
             if self.iuo_nofit_thr < self.iuo_fit_thr:
                 ignore = (max_ious>self.iuo_nofit_thr) & (idxs)  # ignore ious between [0.4,0.5]
                 cls_targets[ignore] = torch.tensor(-1).to(cls_targets.device)  # for now just mark ignored to -1
+                if self.ignored_scores[1]:
+                    ignore = scores <  self.ignored_scores[1]  # ignore objects with low score
+                    cls_targets[ignore] = torch.tensor(-1).to(cls_targets.device)  # for now just mark ignored to -1
         else:
             loc_targets = torch.zeros(anchor_boxes.shape[0], 4, dtype = torch.float32, device=anchor_boxes.device)
             if len(labels.shape) > 1:
