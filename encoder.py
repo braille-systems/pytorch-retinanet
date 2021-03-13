@@ -13,7 +13,9 @@ class DataEncoder(torch.nn.Module):
                  aspect_ratios = [1 / 2., 1 / 1., 2 / 1.], # width/height
                  scale_ratios = [1., pow(2, 1 / 3.), pow(2, 2 / 3.)],
                  iuo_fit_thr = 0.5, # if iou > iuo_fit_thr => rect fits anchor
-                 iuo_nofit_thr = 0.4, # if iou < iuo_nofit_thr => anchor has no fit rect
+                 iuo_nofit_thr = 0.4, # if iou < iuo_nofit_thr => anchor has no fit rect,
+                 fpn_skip_layers = None,
+                 ignored_scores = None
                  ):
         # type: (List[float], List[float], List[float], float, float) -> None
         super(DataEncoder, self).__init__()
@@ -90,8 +92,8 @@ class DataEncoder(torch.nn.Module):
         return self.anchor_boxes
 
     @torch.jit.unused
-    def encode(self, boxes, labels, input_size):
-        # type: (Tensor, Tensor, Tuple[int, int])->Tuple[Tensor, Tensor, Tensor]
+    def encode(self, boxes, labels, input_size, scores = None):
+        # type: (Tensor, Tensor, Tuple[int, int], Any)->Tuple[Tensor, Tensor, Tensor]
         '''Encode target bounding boxes and class labels.
 
         We obey the Faster RCNN box coder:
